@@ -43,7 +43,7 @@ def drawText(labelText, xPos, yPos, labelType, size):
 	return screen.blit(text, textRect)
 
 
-def positionInArray(coordinates): # Pass in corrdinates as array: [c, r]
+def positionInArray(coordinates): # Pass in coordinates as array: [c, r]
 	colPos = coordinates[0]
 	rowPos = coordinates[1]
 
@@ -66,32 +66,29 @@ def getDirList(coordinates):
 	possDirList = [] #[[0, -1], [0, 1], [-1, 0], [1, 0]] # U, D, L, R
 
 	if positionInArray(coordinates):
+		# Cannot check outer layer if this block IS the boundary.
 
 		if wallArray[coordinates[1]][coordinates[0]].topWall == False:
-			
-			# Cannot check outer layer if this block IS the boundary.
-			if not (coordinates[1] > 0 and wallArray[coordinates[1]-1][coordinates[0]].botWall == True):
-				possDirList.append([0, -1])
-					
+			if coordinates[1] > 0:
+				if wallArray[coordinates[1]-1][coordinates[0]].botWall == False:
+					possDirList.append([0, -1])
+
 		if wallArray[coordinates[1]][coordinates[0]].botWall == False:
-
-			if not (coordinates[1] < ROWS-1 and wallArray[coordinates[1]+1][coordinates[0]].topWall == True):
-				possDirList.append([0,1])
-			
+			if coordinates[1] < ROWS-1:
+				if wallArray[coordinates[1]+1][coordinates[0]].topWall == False:
+					possDirList.append([0, 1])
+				
 		if wallArray[coordinates[1]][coordinates[0]].lefWall == False:
-
-			if not (coordinates[0] > 0 and wallArray[coordinates[1]][coordinates[0]-1].rigWall == True):
-				possDirList.append([-1,0])
+			if coordinates[0] < COLS-1:
+				if wallArray[coordinates[1]][coordinates[0]+1].rigWall == False:
+					possDirList.append([-1, 0])			
 			
 		if wallArray[coordinates[1]][coordinates[0]].rigWall == False:
-			
-			if not (coordinates[0] < COLS-1 and wallArray[coordinates[1]][coordinates[0]+1].lefWall == True):
-				possDirList.append([1, 0])
+			if coordinates[0] > 0:
+				if wallArray[coordinates[1]][coordinates[0]-1].lefWall == False:
+					possDirList.append([1, 0])
 
-	# Only return the available directions from this position.
-	newList = list(filter(lambda x: (x != 0), possDirList))
-
-	return newList
+	return possDirList
 
 
 def testForEdge(coordinates): # Pass in corrdinates as array: [c, r]
@@ -434,10 +431,31 @@ class player:
 
 Player = player(0, 0 )
 
+class ghost:
+	def __init__(self):
+		self.x = 5
+		self.y = 6
+		self.color = (0, 255, 200)
+
+	def draw(self, lineMarg, tileSize):
+		pygame.draw.rect(screen, self.color, (int((self.x * tileSize) -lineMarg+4), int((self.y * tileSize) -lineMarg+4), tileSize-lineMarg/2, tileSize-lineMarg/2))
+
+	def updatePosition(self):
+		global wallArray
+
+		dirList = getDirList([self.x-1, self.y-1]) # For some reason, I needed to write -1 for index format
+
+		direction = random.choice(dirList)
+
+		self.x = self.x + direction[0]
+		self.y = self.y + direction[1]
+
 enemiesList = []
-# enemiesList.append(enemy(0, 9))
-# enemiesList.append(enemy(9, 9))
-# enemiesList.append(enemy(9, 0))
+enemiesList.append(ghost())
+enemiesList.append(ghost())
+enemiesList.append(ghost())
+
+
 
 def drawWallArray(lineSize, lineMarg, dif, lineColor, tileSize):
 	global wallArray
@@ -473,8 +491,13 @@ def drawPlayer(lineMarg, tileSize):
 	pygame.draw.rect(screen, (0, 0, 0), (int(indicatorX), int(indicatorY), 5, 5))
 
 
+def drawEnemies(lineMarg, tileSize):
+	for obj in enemiesList:
+		obj.draw(lineMarg, tileSize)
+
+
 def draw():
-	lineSize = 3
+	lineSize = 1
 	lineMarg = tileSize/2
 	dif = 1
 	lineColor = (0, 0, 230)
@@ -483,7 +506,7 @@ def draw():
 
 	drawPlayer(lineMarg, tileSize)
 	
-	# drawEnemies(lineMarg, tileSize)
+	drawEnemies(lineMarg, tileSize)
 	# drawText(str("Press: (SPACE) to respawn ghost."), w_width/2, w_height-tileSize+10, "gray", 10)
 	# for obj in enemiesList:
 	# 	x = obj.x*tileSize+tileSize
@@ -510,12 +533,9 @@ def updateDisplay():
 					pygame.quit()
 					sys.exit()
 
-				if event.key == pygame.K_SPACE:
-					for obj in enemiesList:
-						if obj.mode == "RANDOM":
-							obj.mode = "CHASE"
-						else: 
-							obj.mode = "RANDOM"
+				# if event.key == pygame.K_SPACE:
+				# 	for obj in enemiesList:
+				# 		obj.updatePosition()
 
 				elif event.key == pygame.K_UP:
 					if [0, -1] in getDirList([Player.x, Player.y]):
@@ -536,17 +556,12 @@ def updateDisplay():
 			
 			screen.fill(backgroundColour)
 			draw()
-
-			# if enemiesList[0].mode == "CHASE":
-			# 	for obj in enemiesList:
-			# 		obj.updatePosition()
 			
 		if timeTracker % 20 == 0:
 			Player.updatePosition(Player.direction)
 
-			# if enemiesList[0].mode == "RANDOM":
-			# 	for obj in enemiesList:
-			# 		obj.updatePosition()
+			for obj in enemiesList:
+				obj.updatePosition()
 
 		pygame.display.update()
 
