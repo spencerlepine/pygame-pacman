@@ -18,6 +18,7 @@ ROWS =  11
 COLS = 10
 w_width = tileSize + (tileSize * COLS)
 w_height = tileSize + (tileSize * ROWS) + tileSize
+tempPathArray = []
 
 screen = pygame.display.set_mode((w_width, w_height))
 pygame.display.set_caption("Pacman")
@@ -78,15 +79,15 @@ def getDirList(coordinates):
 				if wallArray[coordinates[1]+1][coordinates[0]].topWall == False:
 					possDirList.append([0, 1])
 				
-		if wallArray[coordinates[1]][coordinates[0]].lefWall == False:
-			if coordinates[0] < COLS-1:
-				if wallArray[coordinates[1]][coordinates[0]+1].rigWall == False:
-					possDirList.append([-1, 0])			
-			
 		if wallArray[coordinates[1]][coordinates[0]].rigWall == False:
+			if coordinates[0] < COLS-1:
+				if wallArray[coordinates[1]][coordinates[0]+1].lefWall == False:
+					possDirList.append([1, 0])			
+			
+		if wallArray[coordinates[1]][coordinates[0]].lefWall == False:
 			if coordinates[0] > 0:
-				if wallArray[coordinates[1]][coordinates[0]-1].lefWall == False:
-					possDirList.append([1, 0])
+				if wallArray[coordinates[1]][coordinates[0]-1].rigWall == False:
+					possDirList.append([-1, 0])
 
 	return possDirList
 
@@ -118,6 +119,84 @@ def getDistance(coordinates, target):
 		return xDis
 	elif yDis >= xDis:
 		return yDis
+
+
+def getPreffered(coordinates, targetCoords):
+	thisX = coordinates[0]
+	thisY = coordinates[1]
+	targX = targetCoords[0]
+	targY = targetCoords[1]
+
+	getXDifference = -1 * (thisX - targX)
+	getYDifference = -1 * (thisY - targY)
+
+	if getXDifference > 0:
+		XDif = 1
+	elif getXDifference < 0:
+		XDif = -1
+
+	if getYDifference > 0:
+		YDif = 1
+	elif getYDifference < 0:
+		YDif = -1
+
+	if (abs(getXDifference) > abs(getYDifference)):
+		return [XDif, 0]
+	elif (abs(getYDifference) > abs(getXDifference)):
+		return [0, YDif]
+	elif abs(getYDifference) == abs(getXDifference):
+		return [0, YDif]
+
+
+def pathFindGhost(thisStepCoords, targetCoords, pathList):
+	global tempPathArray
+
+	# Start at thisStepCoords, and traverse to targetCoords where the ghost is
+	pathList.insert(0, thisStepCoords)
+
+	if pathList[0] == targetCoords:
+		tempPathArray = pathList
+		return True
+
+
+	# Every step, shovel in the steps until it reaches the ghost. (The ghost position will the first in the array, and the ghost will move down the array)
+	openDirections = getDirList(thisStepCoords)
+
+	prefferableDirection = getPreffered(thisStepCoords, targetCoords)
+
+	if prefferableDirection in openDirections:
+		newCoords = getNewCoords(thisStepCoords, prefferableDirection)
+		pathFindGhost(newCoords, targetCoords, pathList)
+	else:
+		randomDirection = random.choice(openDirections)
+		newCords = getNewCoords(thisStepCoords, randomDirection)
+		pathFindGhost(newCords, targetCoords, pathList)
+
+
+def getPrefferableEnemyDirection(possibleDirectionsList, directionGoing, backwards):
+	if len(possibleDirectionsList) > 1:
+		# Try to keep going straight.
+		if backwards in possibleDirectionsList:
+			possibleDirectionsList.remove(backwards)
+
+	return random.choice(possibleDirectionsList)
+
+
+def returnPreffered(coords, targetCoords):
+	dirList = getDirList(coords)
+
+	distances = []
+	for direction in dirList:
+		distances.append(getDistance(coords, targetCoords))
+
+	mininum = distances[0]
+	index = 0
+	for i in range(0, len(distances)):
+		if(distances[i] < mininum):
+			mininum = distances[i];
+			index = i
+
+	return dirList[index] # Is the best option 
 
 
 def pacmanWalls(array):
@@ -402,6 +481,7 @@ class player:
 
 		self.eatFood(wallArray)
 
+		# When it hits the open edge, bypass the normal testForEdge test:
 		if self.x == 9 and self.y == 5 and direction == [1, 0]: 
 			self.x = 0
 			return
@@ -433,32 +513,96 @@ Player = player(0, 0 )
 
 class ghost:
 	def __init__(self):
-		self.x = 5
-		self.y = 6
+		self.x = 10
+		self.y = 11
 		self.color = (0, 255, 200)
+		self.direction = random.choice(getDirList([self.x-1, self.y-1]))
+		self.mode = 'wander'
+		self.path = []
 
 	def draw(self, lineMarg, tileSize):
 		pygame.draw.rect(screen, self.color, (int((self.x * tileSize) -lineMarg+4), int((self.y * tileSize) -lineMarg+4), tileSize-lineMarg/2, tileSize-lineMarg/2))
 
+	def switchMode(self):
+		# pathFindGhost([self.x-1, self.y-1], [5, 4], [])
+		if self.mode == 'pathfind':
+			self.path = 'something_not_none'
+			self.mode = 'wander'
+		elif self.mode == 'wander':	
+			self.path = None
+			self.mode = 'pathfind'
+		
+
+		print(self.mode)
+		self.updatePosition()
+
 	def updatePosition(self):
-		global wallArray
+		global wallArray, tempPathArray
+		# Test ghost coordinates with normal x,y values, NOT INDEX format.
 
-		dirList = getDirList([self.x-1, self.y-1]) # For some reason, I needed to write -1 for index format
+		if (self.x == 6 or self.x == 5) and self.y == 6:
+			self.mode = 'wander'
+			return
 
-		direction = random.choice(dirList)
+		dirList = getDirList([self.x-1, self.y-1])# For some reason, I needed to write -1 for index format
 
-		self.x = self.x + direction[0]
-		self.y = self.y + direction[1]
+		if self.mode == 'wander':
+			#When it hits the open edge, bypass the normal testForEdge test:
+			if self.x == 10 and self.y == 6 and self.direction == [1, 0]: 
+				self.x = 1
+				return
+
+			elif self.x == 1 and self.y == 6 and self.direction == [-1, 0]: 
+				self.x = 10
+				return
+
+			if self.direction not in dirList:
+				self.direction = getPrefferableEnemyDirection(dirList, self.direction, getOppositeDirection(self.direction))
+
+			self.x = self.x + self.direction[0]
+			self.y = self.y + self.direction[1]
+
+		elif self.mode == 'pathfind':
+			if (self.x == 6 and self.y == 5) or (self.x == 5 and self.y == 5):
+				self.y = 6
+				self.mode = 'wander'
+				return
+
+			else:
+				# regenerate the path
+				if getDistance([self.x-1, self.y-1], [6, 5]) < 6 and self.path == None:
+					pathFindGhost([self.x-1, self.y-1], [5, 4], [])
+					self.path = tempPathArray
+				# else:
+				# 	direction = returnPreffered([self.x-1, self.y-1], [5, 4])
+
+				# 	self.x = self.x + direction[0]
+				# 	self.y = self.y + direction[1]
+
+				# 	return
+				
+				# Use the path finding
+				if self.path != None and len(self.path) > 0:
+
+					self.x = self.path[len(self.path)-1][0] + 1 # Convert FROM index form
+					self.y = self.path[len(self.path)-1][1] + 1 # Convert FROM index form
+
+					self.path.pop()
+
+				# else:
+				# 	print("Can't move, my path is: {}".format(self.path))
+
+
 
 enemiesList = []
 enemiesList.append(ghost())
-enemiesList.append(ghost())
-enemiesList.append(ghost())
-
-
+# enemiesList.append(ghost())
+# enemiesList.append(ghost())
 
 def drawWallArray(lineSize, lineMarg, dif, lineColor, tileSize):
 	global wallArray
+	
+
 
 	for row in range(ROWS):
 		for col in range(COLS):
@@ -533,9 +677,9 @@ def updateDisplay():
 					pygame.quit()
 					sys.exit()
 
-				# if event.key == pygame.K_SPACE:
-				# 	for obj in enemiesList:
-				# 		obj.updatePosition()
+				if event.key == pygame.K_SPACE:
+					for obj in enemiesList:
+						obj.switchMode()
 
 				elif event.key == pygame.K_UP:
 					if [0, -1] in getDirList([Player.x, Player.y]):
@@ -552,16 +696,21 @@ def updateDisplay():
 
 
 		# Do not update the images every single frame, however, key events are detected every frame.
-		if timeTracker % 10 == 0:
+		if timeTracker % 15 == 0:
 			
 			screen.fill(backgroundColour)
 			draw()
+
+			for obj in enemiesList:
+				if obj.mode == 'pathfind':
+					obj.updatePosition()
 			
 		if timeTracker % 20 == 0:
 			Player.updatePosition(Player.direction)
 
 			for obj in enemiesList:
-				obj.updatePosition()
+				if obj.mode == 'wander':
+					obj.updatePosition()
 
 		pygame.display.update()
 
